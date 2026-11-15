@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "chat_organizer": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "--disable-warning=ExperimentalWarning",
+        "${PLUGIN_ROOT}/bundle.mjs"
+      ],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

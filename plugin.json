@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "chat-organizer",
+  "version": "0.2.2",
+  "description": "Organize a private local catalog of ChatGPT and Codex chats with categories, search, and priority marks.",
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "interface": {
+        "displayName": "Chat Organizer",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/icon.png",
+        "shortDescription": "Find and organize your saved chats",
+        "longDescription": "Browse a private local catalog with nested categories, priority marks, title search, and links to original chats. Updates use compatible Codex desktop tools and available local metadata. Source coverage and verification exceptions are shown in the organizer.",
+        "category": "Productivity",
+        "capabilities": ["Open organizer", "Organize chats", "Search saved titles", "Update chat metadata"],
+        "defaultPrompt": ["Open Chat Organizer."]
+      }
+    }
+  }
+}

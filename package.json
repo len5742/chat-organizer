@@ -1,0 +1,26 @@
+{
+  "name": "chat-organizer",
+  "version": "0.2.2",
+  "private": true,
+  "description": "A local chat catalog and organizer for compatible Codex desktop installations.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "start:http": "node server.mjs --http --port=43187",
+    "build": "node scripts/build.mjs",
+    "import:export": "node --disable-warning=ExperimentalWarning scripts/import-export.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
