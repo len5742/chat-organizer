@@ -137,6 +137,10 @@ Keep catalogs, backups, and diagnostic screenshots private when opening issues o
 
 After three qualifying unresolved verification attempts, spaced at least six hours apart, a chat may appear under **Potentially deleted** for review. Restore returns it to its original category. Confirm deleted records your decision to hide its organizer entry. Rate limits and access-denied errors are handled separately from these unresolved checks.
 
+## Support and feedback
+
+This is a personal project. Bug reports and suggestions are welcome through [GitHub Issues](https://github.com/len5742/chat-organizer/issues). Responses and improvements are handled as time permits, with no guaranteed response time or commitment to implement a request.
+
 ## Development
 
 The UI is plain HTML, CSS, and JavaScript. A Node.js MCP server validates requests and maintains the SQLite catalog. The build bundles server dependencies with esbuild and copies the UI, icon, workflow, and manifests into a local marketplace.
