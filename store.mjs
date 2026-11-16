@@ -50,6 +50,23 @@ export function isProjectMember(project, item) {
   return item.source === 'codex' && (project.projectAliases ?? []).some(alias => item.projectId === alias.sourceId && item.hostId === alias.hostId);
 }
 
+// Archive selection is deliberately stricter than presentation when two
+// unrelated source types or hosts happen to use the same project identifier.
+function isArchiveProjectMember(project, item) {
+  if (project.kind !== 'project' || item.kind !== 'chat') return false;
+  if (item.source === 'codex' && (project.projectAliases ?? []).some(alias => item.projectId === alias.sourceId && item.hostId === alias.hostId)) return true;
+  if (item.projectId !== project.sourceId) return false;
+  if (project.source === 'codex') return item.source === 'codex' && (item.hostId ?? null) === (project.hostId ?? null);
+  return item.source === 'chatgpt' || (item.source === 'codex' && /^g-p-[a-f0-9]{32}$/i.test(project.sourceId)
+    && (project.projectAliases??[]).some(alias=>alias.hostId===item.hostId));
+}
+
+const trashTargetKey = item => item.source === 'chatgpt' || item.webConversationId
+  ? 'chatgpt:' + (item.webConversationId || item.sourceId) : 'codex:' + (item.hostId || '') + ':' + item.sourceId;
+const trashIdentityStamp = rows => JSON.stringify(rows.map(item => ({id:item.id,source:item.source,sourceId:item.sourceId,
+  hostId:item.hostId ?? null,category:item.category,projectId:item.projectId ?? null,webConversationId:item.webConversationId ?? null,
+  chatgptProjectId:item.chatgptProjectId ?? null})).sort((a,b)=>a.id.localeCompare(b.id)));
+
 function withRecentActivity(items) {
   const membersByProject = new Map();
   for (const item of items) {
@@ -150,6 +167,9 @@ export class CatalogStore {
         confirmed_deleted_at TEXT
       );
       CREATE TABLE IF NOT EXISTS catalog_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS catalog_trash_archive_batches (
+        id TEXT PRIMARY KEY, created_at TEXT NOT NULL, payload TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS catalog_sync (
         item_id TEXT PRIMARY KEY REFERENCES catalog_items(id) ON DELETE CASCADE,
         availability TEXT NOT NULL DEFAULT 'available' CHECK(availability IN ('available','not_found','archived')),
@@ -199,6 +219,280 @@ export class CatalogStore {
   }
 
   close() { this.db.close(); }
+  trashArchiveBatch(batchId) {
+    const row = batchId
+      ? this.db.prepare('SELECT payload FROM catalog_trash_archive_batches WHERE id=?').get(batchId)
+      : this.db.prepare('SELECT payload FROM catalog_trash_archive_batches ORDER BY created_at DESC, rowid DESC LIMIT 1').get();
+    if (!row) {
+      if (batchId) throw new CatalogError('INVALID_BATCH', 'That Trash archive batch does not exist.');
+      return null;
+    }
+    return JSON.parse(row.payload);
+  }
+
+  saveTrashArchiveBatch(batch) {
+    this.db.prepare('INSERT INTO catalog_trash_archive_batches(id,created_at,payload) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload')
+      .run(batch.batchId, batch.createdAt, JSON.stringify(batch));
+  }
+
+  trashArchiveState({ batchId } = {}) {
+    const batch = this.trashArchiveBatch(batchId);
+    if (!batch) return null;
+    const counts = { total: batch.items.length, excluded:batch.skipped.length, pending: 0, processing: 0, archived: 0, failed: 0, unknown: 0, skipped: batch.skipped.length };
+    for (const item of batch.items) counts[item.outcome]++;
+    counts.projectsTotal=(batch.projects??[]).length;
+    counts.projectsRemoved=(batch.projects??[]).filter(project=>project.outcome==='removed').length;
+    counts.projectsRetained=(batch.projects??[]).filter(project=>project.outcome==='retained').length;
+    // Claim tokens are capabilities for the worker, never part of page state.
+    return { ...batch, items: batch.items.map(({ claimToken, ...item }) => item), counts, revision: Number(this.meta('revision')) };
+  }
+
+  trashArchiveCandidates({includeProjects=true,projectIds} = {}) {
+    const categories = this.categories(), trash = categories.find(category => category.parentId === null && nameKey(category.name) === 'trash');
+    const selectedCategories = new Set(trash ? [trash.id] : []);
+    for (const category of categories) if (selectedCategories.has(category.parentId)) selectedCategories.add(category.id);
+    const rows = this.db.prepare(`SELECT i.id,i.source,i.source_id AS sourceId,i.title,i.kind,i.category,i.host_id AS hostId,
+      i.project_id AS projectId,i.web_conversation_id AS webConversationId,i.chatgpt_project_id AS chatgptProjectId,COALESCE(s.availability,'available') AS availability,
+      EXISTS(SELECT 1 FROM catalog_hidden h WHERE h.item_id=i.id) AS hidden
+      FROM catalog_items i LEFT JOIN catalog_sync s ON s.item_id=i.id ORDER BY i.title COLLATE NOCASE,i.id`).all();
+    const snapshot=this.snapshot(),visible=new Map(snapshot.items.filter(item=>!item.deletionReview).map(item=>[item.id,item]));
+    const uncertain = new Set();
+    for (const row of this.db.prepare('SELECT payload FROM catalog_trash_archive_batches').all()) {
+      for (const item of JSON.parse(row.payload).items) if (['processing','unknown'].includes(item.outcome)) uncertain.add(item.targetKey);
+    }
+    const groups = new Map(), skipped = [], projects=[];
+    for (const item of rows) {
+      if (item.kind !== 'chat') {
+        if (!includeProjects && visible.has(item.id) && item.availability === 'available' && selectedCategories.has(item.category)) skipped.push({ id:item.id,title:item.title,reason:'This older batch did not approve archiving project contents or removing project entries.' });
+        continue;
+      }
+      const targetKey = trashTargetKey(item);
+      if (!groups.has(targetKey)) groups.set(targetKey, []);
+      groups.get(targetKey).push(item);
+    }
+    if (includeProjects) for (const project of snapshot.items.filter(item=>item.kind==='project' && item.availability==='available' && selectedCategories.has(item.category) && (!projectIds || projectIds.includes(item.id)))) {
+      const aliasIds=this.organizationGroup(project.id).map(item=>item.id).sort(),aliases=rows.filter(item=>aliasIds.includes(item.id));
+      const memberGroups=[...groups].filter(([,peers])=>peers.some(item=>isProjectMember(project,item)));
+      const members=memberGroups.flatMap(([,peers])=>peers),blockedReasons=[];
+      if (aliases.some(item=>item.hidden || item.availability!=='available' || !selectedCategories.has(item.category))) blockedReasons.push('A linked project representation is hidden, unavailable, or outside Trash. Review the linked project entries first.');
+      if(members.some(item=>item.availability!=='archived' && isProjectMember(project,item) && !isArchiveProjectMember(project,item))) blockedReasons.push('A displayed member has ambiguous source or host membership. Its identity requires review before archiving.');
+      if (members.some(item=>item.availability!=='archived' && (!visible.has(item.id) && !memberGroups.some(([,peers])=>peers.some(peer=>peer.id===item.id) && peers.some(peer=>visible.has(peer.id)))))) blockedReasons.push('A saved member is hidden, missing, or awaiting review rather than confirmed archived.');
+      projects.push({id:project.id,title:project.title,aliasIds,chatIds:[],memberIds:members.map(item=>item.id).sort(),
+        alreadyArchivedCount:memberGroups.filter(([,peers])=>peers.every(item=>item.availability==='archived')).length,
+        blockedReasons,identityStamp:trashIdentityStamp(aliases),memberStamp:trashIdentityStamp(members),
+        source:project.source,sourceId:project.sourceId,hostId:project.hostId,projectAliases:project.projectAliases??[]});
+      for(const member of members.filter(item=>item.availability!=='archived' && visible.has(item.id) && isProjectMember(project,item) && !isArchiveProjectMember(project,item))) {
+        if(!skipped.some(item=>item.id===member.id)) skipped.push({id:member.id,title:member.title,reason:'Project membership has an ambiguous source or host; this chat is not selected through '+project.title+'.'});
+      }
+    }
+    const projectView=new Map(snapshot.items.filter(item=>item.kind==='project').map(item=>[item.id,item]));
+    const scopeProjects=projects.filter(project=>!project.blockedReasons.some(reason=>reason.startsWith('A linked project representation')));
+    const scopeFor=item=>scopeProjects.filter(project=>isArchiveProjectMember(projectView.get(project.id),item)).map(project=>project.id);
+    const inScope=item=>selectedCategories.has(item.category)||scopeFor(item).length>0;
+    const items = [];
+    for (const [targetKey, peers] of groups) {
+      const candidates = peers.filter(item => visible.has(item.id) && item.availability === 'available' && inScope(item));
+      if (!candidates.length) continue;
+      const item = candidates.find(item => item.source === 'chatgpt') ?? candidates[0];
+      let reason;
+      if (uncertain.has(targetKey)) reason = 'An earlier archive request has an uncertain or unfinished outcome. Review it before requesting another archive.';
+      else if (peers.some(peer => !inScope(peer))) reason = 'A linked representation is outside the approved Trash or project scope. Review the linked chat entries before archiving.';
+      else if (peers.some(peer => peer.availability !== 'available' || peer.hidden)) reason = 'A linked representation is already hidden or unavailable. Review its source status first.';
+      if (reason) { skipped.push({id:item.id,title:item.title,reason}); continue; }
+      const source = targetKey.startsWith('chatgpt:') ? 'chatgpt' : 'codex';
+      const origins=[...new Set(peers.flatMap(scopeFor))].sort();
+      items.push({id:item.id,title:item.title,source,sourceId:source === 'chatgpt' ? (item.webConversationId || item.sourceId) : item.sourceId,
+        hostId:source === 'codex' ? item.hostId : null,aliasIds:peers.map(peer => peer.id).sort(),targetKey,
+        directTrash:peers.every(peer=>selectedCategories.has(peer.category)),projectIds:origins,
+        projectTitles:origins.map(id=>projects.find(project=>project.id===id).title),identityStamp:trashIdentityStamp(peers)});
+    }
+    for (const project of projects) project.chatIds=items.filter(item=>item.projectIds.includes(project.id)).map(item=>item.id);
+    return {items,projects,skipped};
+  }
+
+  previewTrashArchive() {
+    const batch = this.trashArchiveState();
+    return { revision:Number(this.meta('revision')), ...this.trashArchiveCandidates(),
+      activeBatch:batch && ['pending','running'].includes(batch.status) ? batch : null };
+  }
+
+  startTrashArchive({ ids, projectIds=[], expectedRevision }) {
+    return this.transaction(() => {
+      this.assertRevision(expectedRevision);
+      if (!Array.isArray(ids) || !Array.isArray(projectIds) || !ids.length&&!projectIds.length || ids.length>20000 || projectIds.length>10000 || new Set(ids).size!==ids.length || new Set(projectIds).size!==projectIds.length) throw new CatalogError('INVALID_INPUT','Choose distinct chat and project IDs from the Trash preview.');
+      const preview = this.previewTrashArchive();
+      if (preview.activeBatch) throw new CatalogError('ARCHIVE_BUSY','A Trash archive batch is already pending or running. Check its status before starting another.');
+      if(projectIds.some(id=>!preview.projects.some(project=>project.id===id))) throw new CatalogError('TRASH_CHANGED','The selected projects changed. Review a fresh preview.');
+      const scope=this.trashArchiveCandidates({projectIds});
+      const candidates = new Map(scope.items.map(item => [item.id,item]));
+      if (ids.some(id => !candidates.has(id))) throw new CatalogError('TRASH_CHANGED','The selected Trash entries changed. Review a fresh preview.');
+      const batch = {batchId:randomUUID(),scopeVersion:2,status:'pending',createdAt:new Date().toISOString(),finishedAt:null,
+        items:ids.map(id => ({...candidates.get(id),outcome:'pending'})),projects:scope.projects.map(project=>({...project,outcome:'pending'})),skipped:scope.skipped};
+      this.saveTrashArchiveBatch(batch);
+      return this.trashArchiveState({batchId:batch.batchId});
+    });
+  }
+
+  claimTrashArchive({batchId}) {
+    return this.transaction(() => {
+      const batch = this.trashArchiveBatch(batchId);
+      if(batch.stopRequestedAt) {
+        this.settleTrashArchiveStop(batch);
+        return {claimed:false,reason:batch.status==='stopped'?'stopped':'stopping',state:this.trashArchiveState({batchId})};
+      }
+      if (batch.items.some(item => item.outcome === 'processing')) return {claimed:false,reason:'in_flight',state:this.trashArchiveState({batchId})};
+      if (!['pending','running'].includes(batch.status)) return {claimed:false,reason:'finished',state:this.trashArchiveState({batchId})};
+      const scope=this.trashArchiveCandidates({includeProjects:batch.scopeVersion===2,projectIds:(batch.projects??[]).map(project=>project.id)});
+      const candidates = new Map(scope.items.map(item => [item.id,item]));
+      for (const item of batch.items.filter(item => item.outcome === 'pending')) {
+        const current = candidates.get(item.id);
+        const approvedOrigins=(item.projectIds??[]).filter(id=>current?.projectIds?.includes(id) && scope.projects.some(project=>project.id===id && project.identityStamp===batch.projects?.find(saved=>saved.id===id)?.identityStamp));
+        if (!current || current.targetKey !== item.targetKey || JSON.stringify(current.aliasIds) !== JSON.stringify(item.aliasIds)
+          || batch.scopeVersion===2 && (current.identityStamp!==item.identityStamp || (!item.directTrash && !approvedOrigins.length))) {
+          item.outcome = 'skipped'; item.detail = 'This entry or its linked representations changed or moved out of Trash after confirmation.';
+          continue;
+        }
+        item.outcome = 'processing'; item.claimToken = randomUUID(); item.startedAt = new Date().toISOString(); batch.status = 'running';
+        this.saveTrashArchiveBatch(batch);
+        return {claimed:true,item:{...current},claimToken:item.claimToken,state:this.trashArchiveState({batchId})};
+      }
+      this.saveTrashArchiveBatch(batch);
+      return {claimed:false,reason:'exhausted',state:this.trashArchiveState({batchId})};
+    });
+  }
+
+  recordTrashArchive({batchId,id,claimToken,outcome,detail}) {
+    return this.transaction(() => {
+      const batch = this.trashArchiveBatch(batchId), item = batch.items.find(item => item.id === id);
+      if (!item || !claimToken || item.claimToken !== claimToken) throw new CatalogError('INVALID_CLAIM','This result does not match the claimed archive request.');
+      if (!['archived','failed','unknown'].includes(outcome)) throw new CatalogError('INVALID_INPUT','Invalid archive result.');
+      const lateAcknowledgment = item.outcome === 'unknown' && item.abandoned === true && outcome === 'archived';
+      if (item.outcome !== 'processing' && !lateAcknowledgment) {
+        if (item.outcome === outcome) return this.trashArchiveState({batchId});
+        throw new CatalogError('INVALID_CLAIM','An archive result has already been recorded.');
+      }
+      item.outcome = outcome; item.detail = typeof detail === 'string' ? detail.slice(0,500) : ''; item.finishedAt = new Date().toISOString();
+      if (outcome === 'archived') {
+        // The worker supplies this result only after a native source tool
+        // explicitly acknowledges archived:true. This is source-action evidence,
+        // separate from owner confirmation and source-list observations.
+        for (const aliasId of item.aliasIds) {
+          if (!this.db.prepare('SELECT 1 FROM catalog_items WHERE id=?').get(aliasId)) continue;
+          const saved = this.db.prepare('SELECT clocks FROM catalog_sync WHERE item_id=?').get(aliasId);
+          const clocks = JSON.parse(saved?.clocks ?? '{}'), at = Date.parse(item.finishedAt);
+          clocks.status = at; clocks.check = at;
+          this.db.prepare(`INSERT INTO catalog_sync(item_id,availability,last_checked_at,last_check_error,clocks) VALUES(?,'archived',?,NULL,?)
+            ON CONFLICT(item_id) DO UPDATE SET availability='archived',last_checked_at=excluded.last_checked_at,last_check_error=NULL,clocks=excluded.clocks`)
+            .run(aliasId,item.finishedAt,JSON.stringify(clocks));
+          this.db.prepare('DELETE FROM catalog_deletion_review WHERE item_id=?').run(aliasId);
+        }
+        this.bumpRevision();
+      }
+      if(batch.stopRequestedAt) this.settleTrashArchiveStop(batch);
+      this.saveTrashArchiveBatch(batch);
+      return this.trashArchiveState({batchId});
+    });
+  }
+
+  abandonTrashArchive({batchId,userConfirmed}) {
+    if (userConfirmed !== true) throw new CatalogError('REVIEW_REQUIRED','Ask the user to review and explicitly close the stalled batch first.');
+    return this.transaction(() => {
+      const batch=this.trashArchiveBatch(batchId);
+      for (const item of batch.items) {
+        if (item.outcome === 'processing') {
+          item.outcome='unknown';item.abandoned=true;
+          item.detail='The user closed this stalled batch. The source archive outcome is unknown; verify it before retrying.';
+        } else if (item.outcome === 'pending') {item.outcome='skipped';item.detail='The user closed the batch before this chat was attempted.';}
+      }
+      batch.status='needs_attention';batch.finishedAt ??= new Date().toISOString();batch.abandoned=true;
+      for(const project of batch.projects??[]) if(project.outcome==='pending') {project.outcome='retained';project.detail='The batch was closed before project cleanup completed.';}
+      this.saveTrashArchiveBatch(batch);return this.trashArchiveState({batchId});
+    });
+  }
+
+  reviewTrashArchive({batchId,id,confirmedActive}) {
+    if (confirmedActive !== true) throw new CatalogError('REVIEW_REQUIRED','The user must first verify and confirm that this exact source chat is still active.');
+    return this.transaction(() => {
+      const batch=this.trashArchiveBatch(batchId),item=batch.items.find(item=>item.id===id);
+      if (!item || item.outcome !== 'unknown') throw new CatalogError('INVALID_REVIEW','Only a chat with an unknown archive result can be cleared for a fresh preview.');
+      item.outcome='failed';item.reviewedActiveAt=new Date().toISOString();
+      item.detail='The user verified that the source chat is still active. A new preview and confirmation are required to retry archiving.';
+      this.saveTrashArchiveBatch(batch);return this.trashArchiveState({batchId});
+    });
+  }
+
+  finishTrashArchive({batchId,reason}) {
+    return this.transaction(() => {
+      const batch = this.trashArchiveBatch(batchId);
+      if(batch.stopRequestedAt) {this.settleTrashArchiveStop(batch);return this.trashArchiveState({batchId});}
+      if (batch.items.some(item => item.outcome === 'processing')) return this.trashArchiveState({batchId});
+      if (reason) for (const item of batch.items) if (item.outcome === 'pending') {item.outcome='skipped';item.detail=String(reason).slice(0,500);}
+      if (batch.items.some(item => item.outcome === 'pending')) return this.trashArchiveState({batchId});
+      if(batch.scopeVersion===2 && !batch.canceled && !batch.abandoned) this.finishTrashArchiveProjects(batch);
+      batch.status = batch.items.some(item => ['failed','unknown','skipped'].includes(item.outcome)) || batch.skipped.length || (batch.projects??[]).some(project=>project.outcome==='retained') ? 'needs_attention' : 'completed';
+      batch.finishedAt ??= new Date().toISOString();
+      this.saveTrashArchiveBatch(batch);
+      return this.trashArchiveState({batchId});
+    });
+  }
+
+  cancelTrashArchive({batchId}) {
+    return this.transaction(() => {
+      const batch = this.trashArchiveBatch(batchId);
+      if (batch.status!=='pending' || batch.items.some(item => item.outcome !== 'pending') || (batch.projects??[]).some(project=>project.outcome!=='pending')) throw new CatalogError('ARCHIVE_STARTED','The archive worker already started. Check its status before taking further action.');
+      for (const item of batch.items) {item.outcome='skipped';item.detail='The request was canceled before any source archive action.';}
+      for(const project of batch.projects??[]) {project.outcome='retained';project.detail='The request was canceled before organizer project removal.';}
+      batch.status='completed';batch.finishedAt=new Date().toISOString();batch.canceled=true;
+      this.saveTrashArchiveBatch(batch);
+      return this.trashArchiveState({batchId});
+    });
+  }
+
+  stopTrashArchive({batchId}) {
+    return this.transaction(() => {
+      const batch=this.trashArchiveBatch(batchId);
+      if(!['pending','running'].includes(batch.status)) return this.trashArchiveState({batchId});
+      batch.stopRequestedAt ??= new Date().toISOString();
+      this.saveTrashArchiveBatch(batch);
+      this.settleTrashArchiveStop(batch);
+      return this.trashArchiveState({batchId});
+    });
+  }
+
+  settleTrashArchiveStop(batch) {
+    if(!batch.stopRequestedAt || batch.items.some(item=>item.outcome==='processing')) return;
+    for(const item of batch.items) if(item.outcome==='pending') {
+      item.outcome='skipped';item.detail='The user stopped this batch before this chat was attempted.';
+    }
+    for(const project of batch.projects??[]) if(project.outcome==='pending') {
+      project.outcome='retained';project.detail='The user stopped this batch before organizer project removal.';
+    }
+    batch.status='stopped';batch.finishedAt ??= new Date().toISOString();
+    this.saveTrashArchiveBatch(batch);
+  }
+
+  finishTrashArchiveProjects(batch) {
+    const scope=this.trashArchiveCandidates({projectIds:(batch.projects??[]).map(project=>project.id)});
+    let changed=false;
+    for(const project of batch.projects??[]) {
+      if(project.outcome!=='pending') continue;
+      const current=scope.projects.find(item=>item.id===project.id);
+      let detail;
+      if(!current) detail='The project moved out of Trash or is no longer a visible project entry.';
+      else if(current.identityStamp!==project.identityStamp) detail='The project assignment or linked representations changed after confirmation.';
+      else if(current.memberStamp!==project.memberStamp) detail='The project membership or member assignments changed after confirmation. New or changed members require a fresh preview.';
+      else if(current.blockedReasons.length) detail=current.blockedReasons.join(' ').slice(0,500);
+      else if(project.memberIds.some(id=>this.db.prepare('SELECT availability FROM catalog_sync WHERE item_id=?').get(id)?.availability!=='archived')) detail='At least one saved project member has not been confirmed archived. The project entry remains for review.';
+      if(detail) {project.outcome='retained';project.detail=detail;continue;}
+      // The confirmation authorizes this organizer-only disposition. Source
+      // project identity and every source/catalog item row stay intact.
+      const at=new Date().toISOString();
+      for(const id of project.aliasIds) changed=Boolean(this.db.prepare('INSERT OR IGNORE INTO catalog_hidden(item_id,hidden_at) VALUES(?,?)').run(id,at).changes)||changed;
+      project.outcome='removed';project.detail='All saved members are confirmed archived; the project entry was removed from the organizer. The original project remains in the app.';
+      project.finishedAt=at;
+    }
+    if(changed) this.bumpRevision();
+  }
   meta(key) { return this.db.prepare('SELECT value FROM catalog_meta WHERE key = ?').get(key)?.value ?? null; }
   writeMeta(key, value) { this.db.prepare('INSERT INTO catalog_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, String(value)); }
 
@@ -322,7 +616,7 @@ export class CatalogStore {
       items: withRecentActivity(visible), categories: this.categories(), revision: Number(this.meta('revision')),
       savedAt: this.meta('savedAt'), lastImport: lastImport ? JSON.parse(lastImport) : null,
       undoDelete: undoDelete ? { token: undoDelete.token, label: undoDelete.label } : null,
-      connection: { serverVersion: '0.2.2', transport },
+      connection: { serverVersion: '0.2.4', transport },
     };
   }
 

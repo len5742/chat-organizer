@@ -8,18 +8,18 @@ Chat Organizer saves a local catalog of chat and project titles, links, categori
 
 ![Chat Organizer showing synthetic example chats and categories](docs/images/organizer-demo.png)
 
-The preview uses fictional example data. This public package is version **0.2.2**.
+The preview uses fictional example data. This public package is version **0.2.4**.
 
 **Experimental Windows desktop integration.** The organizer requires a compatible Codex desktop host with local plugins, MCP Apps, and native chat/project tools. Automatic discovery depends on host capabilities and local metadata schemas. Fresh-account access and other operating systems require additional integration testing.
 
 **Desktop app required. This package does not run in ChatGPT on the web or on mobile.** It launches a local service and uses metadata on the computer. A future web edition would need a shared service and changes to source access and chat opening; see [Web support](docs/data-and-compatibility.md#web-support-and-a-shared-catalog).
 
-Read the [illustrated screen guide](docs/user-guide.md) for the numbered controls, menus, and everyday use. A [single-file HTML copy](docs/user-guide.html) can be downloaded and opened locally. The guide uses screenshots supplied by the organizer's author.
+Read the [illustrated screen guide](docs/user-guide.md) for the numbered controls, menus, and everyday use. A [single-file HTML copy](docs/user-guide.html) can be downloaded and opened locally. The guide uses screenshots supplied by the organizer's author and a labeled confirmation example with fictional data.
 
 ## Features
 
 - Categories and two levels of subcategories, with a customizable top-level order.
-- A permanent Trash category with a fixed name and adjustable position, for collecting items to archive separately.
+- A permanent Trash category with a fixed name and adjustable position, plus an **Empty trash** button to review and archive a batch through the hosting assistant.
 - Flame marks for important chats and a Priority view that collects them.
 - Search across saved titles, amber highlighting, automatic expansion of hidden matches, and Previous/Next controls that stay visible while scrolling.
 - Jump to category, return to top, and a collapsible header.
@@ -41,6 +41,7 @@ The package includes source, tests, an icon, and a build that produces a local p
 | Metadata updates | Native `list_projects`, `list_threads`, and `list_archived_threads` tools |
 | Chat verification | Native `read_thread` tool |
 | Opening chats | The host's supported link or conversation navigation route |
+| Empty trash | Host support for assistant messages and the native `set_thread_archived` tool |
 
 The local server supplies the organizer interface and saved catalog. The assistant in the hosting conversation runs metadata updates using tools supplied by the desktop app. A generic MCP client can use the catalog tools, but the complete interactive workflow requires the host capabilities above.
 
@@ -54,6 +55,7 @@ Use a ChatGPT data export to establish the historical catalog, then use Update n
 4. Open the organizer. Every imported chat begins in **Uncategorized**, with no flame mark. The importer skips records explicitly marked archived and reports their count.
 5. Press **Update now** to add available local Codex chats and reconcile current source metadata.
 6. Create your own categories and move items from Uncategorized. Add flames for the chats you want collected under Priority.
+7. To clear unwanted chats from the organizer, move chats or their projects to **Trash**, click **Empty trash** after Reload saved data, and review the listed chats and project entries. Confirm the displayed batch. Successful archives disappear from view; completed project entries are removed from the organizer, while unresolved items remain for review.
 
 The export supplies the ChatGPT history included in that export. Codex desktop discovery supplies available local Codex records separately. Export availability and completeness depend on the source account and workspace.
 
@@ -77,7 +79,7 @@ Codex supports local marketplace directories and the `plugin@marketplace` instal
 
 ### Install a built marketplace archive
 
-If you received `chat-organizer-0.2.2-plugin.zip`, extract it and open PowerShell in the directory that contains its `.agents` and `plugins` folders. Install from that directory:
+If you received `chat-organizer-0.2.4-plugin.zip`, extract it and open PowerShell in the directory that contains its `.agents` and `plugins` folders. Install from that directory:
 
 ```powershell
 codex plugin marketplace add "."
@@ -102,7 +104,7 @@ Update now combines the recent sidebar, current local interactive chats, and rec
 
 The metadata workflow treats source titles and returned chat content as data. It uses explicit archive or missing-item evidence and retains saved entries when a partial listing cannot establish their status.
 
-Once items appear, use an item's bullet to choose a category or add a flame. Category moves update organizer labels. Source project membership remains a separate field used to group chats inside their projects. **Trash** is a permanent category: its name and existence are protected, and its position can be changed with Order categories. Moving an item there does not archive it. Archiving source conversations requires a separate explicit request or action in the host app.
+Once items appear, use an item's bullet to choose a category or add a flame. Category moves update organizer labels. Source project membership remains a separate field used to group chats inside their projects. **Trash** is a permanent category: its name and existence are protected, and its position can be changed with Order categories. Moving an item there does not archive it. Click **Empty trash** to review and confirm an archive batch; see [Trash](docs/user-guide.md#11-trash).
 
 ### The three update buttons
 
@@ -113,6 +115,12 @@ Once items appear, use an item's bullet to choose a category or add a flame. Cat
 | **Reload saved data** | Display the latest organizer data already saved by another panel or operation |
 
 Updates start when requested. This package creates no recurring schedule. The stored catalog revision increases when saved items or their organization change. The software version identifies the installed release.
+
+**Empty trash** is a separate archive action beside these buttons. It asks the assistant in the conversation hosting the organizer to archive the reviewed chats. The preview includes individual chats in Trash or its subcategories, plus the listed chats inside projects placed there. The confirmed batch is fixed; new additions wait for a later batch, and chats that leave its selected Trash scope are skipped. Results remain available in the organizer, including names and reasons for unsuccessful or uncertain outcomes.
+
+Confirmation also authorizes removal of each selected **organizer project entry** once all its listed chats are confirmed archived. Empty project entries can be removed through the same confirmation. Failed or uncertain chats keep their project in Trash; new project members discovered after confirmation also keep that project entry visible. The original projects remain in the source app. Empty trash does not permanently delete chats or projects. See the [illustrated project-removal confirmation](docs/user-guide.md#removing-projects-through-trash).
+
+**Empty trash** and **Stop after current chat** share a lightly outlined group after Reload saved data. The stop button stays visible and grayed out when inactive. While a batch is waiting or running, use it to stop safely; its label changes to **Stopping…** after the request. An archive request already in progress finishes and has its result recorded; no further chats are started. If the worker has not started, the stop prevents source actions. Remaining chats and unfinished project entries stay in Trash. A later **Empty trash** request offers a fresh preview of what remains. A stalled native archive request can delay completion of the stop; **Escape** is not a batch-stop command.
 
 ## Data and privacy
 
@@ -129,6 +137,9 @@ Keep catalogs, backups, and diagnostic screenshots private when opening issues o
 | `node` cannot be started | Install Node.js 24 or newer and make it available to the desktop app, then restart the app |
 | Organizer tools or panel are unavailable | Confirm the plugin is installed and enabled in a host with MCP Apps support |
 | Update now is unavailable | Open the organizer in an assistant conversation whose host can accept the update request |
+| Empty trash is unavailable or cannot archive a chat | Open the organizer in a hosting conversation with assistant-message support and the native archive tool; review the named result for any access or source error |
+| An archive outcome is unknown | Check that chat's archive state before retrying. The organizer keeps uncertain items visible for review |
+| A large Trash batch needs to stop | Click **Stop after current chat**; allow the current archive request to finish, then review the saved results |
 | Missing native chat tools | Use a compatible desktop installation and report which required capability is unavailable |
 | An item has an unavailable host or failed verification | Review the named exception. An access failure alone does not establish deletion |
 | Saved data changed / stale revision | Press **Reload saved data**, then retry the category edit |

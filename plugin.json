@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "chat-organizer",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "Organize a private local catalog of ChatGPT and Codex chats with categories, search, and priority marks.",
   "extensions": {
     "com.openai": {

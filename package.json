@@ -1,6 +1,6 @@
 {
   "name": "chat-organizer",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "private": true,
   "description": "A local chat catalog and organizer for compatible Codex desktop installations.",
   "license": "MIT",
