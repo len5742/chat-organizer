@@ -6,13 +6,15 @@ Find an **unarchived chat** by its title, group it in a category, and open it fr
 
 **Desktop app required.** This package runs in a compatible Windows Codex desktop installation. It currently cannot run as a plugin in ChatGPT on the web. See the [installation instructions](../README.md) and [first import guide](first-import.md) before using it for the first time.
 
-The screenshots were supplied by the organizer's original user and show version 0.1.34. This guide describes public version 0.2.2. The personal categories, chat titles, dates, counts, and status messages in the screenshots are examples from that installation. The current search controls are narrower, and Trash now has a protected name and cannot be deleted. The existing blacked-out title is preserved.
+The numbered screenshots were supplied by the organizer's original user and show version 0.1.34. This guide describes public version 0.2.4. The personal categories, chat titles, dates, counts, and status messages in those screenshots are examples from that installation. The current search controls are narrower, Trash has a protected name and cannot be deleted, and **Empty trash** now follows Reload saved data. The existing blacked-out title is preserved. The project-removal confirmation example below was recreated from version 0.2.4 using fictional titles.
 
 ## Screen overview
 
 ![Chat Organizer overview with red numbers identifying controls and categories](images/guide/overview.jpg)
 
 Use the numbers to find a control below. The numbering also matches the close-up screenshots. The arrow before **Chat Organizer** collapses the header controls. An active search remains available. **Help** displays a short reminder of the main controls.
+
+To archive a batch, move chats or their projects to **Trash**, then click **Empty trash** after Reload saved data. Review the listed chats and project entries, then confirm the batch. See [Trash](#11-trash) for the full process; the button was added after these screenshots were taken.
 
 | Number | Item | Number | Item |
 | --- | --- | --- | --- |
@@ -61,6 +63,7 @@ It clears old chat-opening error messages and discards an unsaved category-order
 | Find newly created chats or update source status | **Update now** |
 | Refresh an existing local Codex chat's title or activity date | **Refresh activity** |
 | See changes already saved to the organizer | **Reload saved data** |
+| Review and archive Trash chats, including chats inside selected projects, and clear completed project entries | **Empty trash** |
 
 ## 5 Add category
 
@@ -122,13 +125,26 @@ Review status means the organizer could not settle the question. It is not proof
 
 ## 11 Trash
 
-**Trash** is a permanent category provided by the organizer. Its name is fixed, and it cannot be deleted. You can change its position using **Order categories**. Use it to collect chats you intend to archive.
+**Trash** is a permanent category provided by the organizer. Its name is fixed, and it cannot be deleted. You can change its position using **Order categories**. Use it to collect chats you intend to archive, either individually or by moving their project into Trash.
 
 When updating an existing catalog, the organizer reuses its top-level Trash category, including the items already assigned to it. If there is no top-level Trash category, it adds an empty one.
 
-**Moving a chat to Trash does not archive it, and Update now does not automatically empty Trash.** Ask the assistant separately to archive the chats currently in Trash, or archive them yourself in the source app. The assistant's ability to do that depends on its available tools and access.
+**Moving a chat to Trash does not archive it, and Update now does not automatically empty Trash.** Use **Empty trash**, immediately after Reload saved data, when you are ready to archive a batch.
 
-After archiving, use **Update now** to discover the archive state, or **Reload saved data** if the assistant has already updated the organizer. Confirmed archived entries disappear from view while their saved metadata can remain. An item that cannot be archived should stay available for your review.
+- Review the preview of chat titles and project entries, then confirm the displayed batch. Archiving keeps the source chats recoverable in the app's archive; this button does not permanently delete them.
+- The preview includes individual chats in Trash or its subcategories, plus the listed chats inside projects placed there. Review the individual titles before confirming.
+- Confirmation also covers removing each selected organizer project entry after all of its listed chats are confirmed archived. A project with no listed chats can be removed through the same confirmation. The original project remains in the source app.
+- The confirmed batch keeps that exact set of chats. New additions wait for a later batch. Chats that leave the selected Trash scope before their turn are skipped. New members discovered in a selected project after confirmation are not archived by that batch and keep its project entry visible.
+- The request goes to the assistant in the conversation hosting the organizer. It may wait while that assistant is busy. The host must support assistant messages and provide the native archive tool.
+- Successful source archives disappear from the organizer. Progress and individual results show which chats were archived, which project entries were removed, and which items were skipped or need attention. Failed or uncertain chats keep their project entry in Trash; check an uncertain chat's source state before attempting it again.
+
+The organizer retains saved metadata, including category assignments and flame marks. If another organizer panel is open, use **Reload saved data** there to see the completed results. If you archive a chat yourself in the source app, use **Update now** to discover its archive state.
+
+### Stopping an archive batch
+
+**Empty trash** and **Stop after current chat** sit together inside a light outline after Reload saved data. The stop button stays visible and grayed out when inactive. It becomes available while a batch is waiting or running; click it when you want to pause work on a large batch. Its label changes to **Stopping…** after the request. If an archive request is already in progress, the organizer records that request's result and stops before starting another chat. If the assistant has not started processing, the stop prevents source actions.
+
+Remaining chats and unfinished project entries stay in Trash. To continue later, click **Empty trash** and confirm a fresh preview of the remaining items. A stalled native archive request can delay the final stopped result. **Escape** can close a preview or menu; use **Stop after current chat** to stop the batch.
 
 ## 12 Your categories
 
@@ -165,6 +181,16 @@ Moving a chat to a category, including Trash, changes its organizer assignment. 
 The count beside Uncategorized is the number of entries listed directly in that category. It does not count every chat nested inside a project displayed there.
 
 The floating **up arrow** near the bottom center of the item area returns to the top of the organizer.
+
+## Removing projects through Trash
+
+Move the project to **Trash**, then click **Empty trash**. The confirmation lists the chats to archive and the project entries to remove. Review the list and select **Archive chats and clear projects** to proceed.
+
+![Example confirmation recreated from version 0.2.4 with fictional chat and project titles](images/guide/project-removal-confirmation.png)
+
+Each listed chat is archived individually. When all its listed chats are confirmed archived, the project's entry disappears from the organizer. **The original project remains in the app**, and archived chats can be restored from the app's archive. A project already empty in the saved catalog can be removed through the same confirmation; the button then reads **Remove 1 project entry** for a single project.
+
+Projects with failed, unconfirmed, or newly added chats stay in Trash for review. Use **Stop after current chat** to finish the current request and leave the remaining work in Trash. See [Trash](#11-trash) for the full batch behavior.
 
 ## Random notes
 

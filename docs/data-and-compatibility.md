@@ -16,7 +16,7 @@ Windows falls back to `~/AppData/Local` when `LOCALAPPDATA` is absent. The porta
 
 `CHAT_ORGANIZER_DATA_DIR` overrides the catalog directory and must be an absolute path. The organizer process must have write access to that directory, including SQLite journal files. Set the variable in the plugin's process environment before launch. Changing it selects a different catalog location. Existing files need to be copied separately with the organizer closed.
 
-The catalog contains source IDs, chat and project titles, original links, category hierarchy and ordering, focus marks, timestamps, archive/missing states, and maintenance diagnostics. The GitHub distribution contains synthetic test fixtures and author-supplied screenshots for the illustrated guide. It contains no populated catalog. Source account data is created locally during use.
+The catalog contains source IDs, chat and project titles, original links, category hierarchy and ordering, focus marks, timestamps, archive/missing states, and maintenance diagnostics. The GitHub distribution contains synthetic test fixtures, author-supplied guide screenshots, and a labeled confirmation example with fictional data. It contains no populated catalog. Source account data is created locally during use.
 
 ## Export import
 
@@ -27,6 +27,12 @@ The export ZIP and JSON can contain full messages and other account data. Keep t
 ## Source access
 
 Maintenance uses native host tools for current projects, recent chats, archive listings, and bounded reads of particular chats. Exact tool availability depends on the host and account.
+
+**Empty trash** sends a separately confirmed archive batch to the assistant in the hosting conversation. It requires host support for assistant messages and the native `set_thread_archived` tool. The preview includes individual Trash chats and the listed member chats of projects placed in Trash. The plugin records the exact approved chat and project IDs, progress, and individual outcomes. Successful archive acknowledgments hide the corresponding chat entries. The confirmation also authorizes removal of an organizer project entry after all its listed chats are confirmed archived, or when it has no listed chats. The source project remains in the app.
+
+Failed or uncertain member chats keep their project entry available for review. Newly discovered project members after confirmation are excluded from the archive batch and prevent removal of that project entry. This operation never requests permanent deletion. See [Trash](user-guide.md#11-trash) for its scope and [Removing projects through Trash](user-guide.md#removing-projects-through-trash) for an illustrated confirmation example.
+
+**Stop after current chat** records a stop request for a pending or running batch. The worker finishes and records any source request already in flight, then starts no further archive requests. Before processing begins, stopping prevents source actions. Unprocessed chats and unfinished project entries remain available for a later preview. This does not cancel a native archive request already in progress, so a stalled source response can delay the stopped result.
 
 Local source discovery reads these files below `CODEX_HOME`, or the current user's `~/.codex` directory when that variable is absent:
 

@@ -4,15 +4,19 @@ This package is derived from a locally used organizer and is being prepared for 
 
 ## Local verification
 
-Version 0.2.2 passed 272 automated tests on Windows with Node.js 24. The dependency lockfile is retained from the verified frozen installation. Tests cover the permanent Trash category, protection from renaming and deletion, reordering, preservation of an existing Trash category and its assigned items, and upgrades with a pending category-deletion Undo.
+Version 0.2.4 passed 306 automated tests on Windows with Node.js 24. The dependency lockfile is retained from the verified frozen installation. Tests cover the permanent Trash category, protection from renaming and deletion, reordering, preservation of an existing Trash category and its assigned items, and upgrades with a pending category-deletion Undo. Archive-batch tests cover exact approved scope, project members and aliases, new or changed membership, organizer-only project removal, source failures, uncertain results, concurrent requests, interruption recovery, controlled stopping, and preservation of unrelated catalog data.
 
 A temporary Codex profile was used to register and install `chat-organizer@chat-organizer-community` from a directory containing spaces. Its installed service, interface, and complete maintenance workflow were verified against the build. The service and workflow use the `chat_organizer` namespace.
+
+The 0.2.4 packaged Trash workflow was retrieved from that isolated installation and executed against a fictional project and chat with a simulated native archive acknowledgment. Exactly one archive request was issued, the saved batch completed, and both the archived chat and completed organizer project entry disappeared from the visible catalog. A second fictional project with two chats tested stopping during an archive request: exactly one chat was archived, the batch stopped, and the remaining chat and project entry stayed visible. No real source chat was used in these packaging checks.
 
 The bundled export importer was exercised with fictional records. It imported one active chat into Uncategorized and skipped one explicit archive. The installed plugin read back the imported record. The test suite verifies refusal of a repeat import into a populated catalog, validation failures, duplicate IDs, numbered files, source-content exclusion, and competing catalog changes.
 
 An isolated Chrome check used fictional chat titles at 1850 and 390 pixel widths. Search controls measured 640 pixels on the wide screen and 343 pixels on the narrow screen. The cap held while scrolling and with the header collapsed during an active search; Previous, Next, and Clear worked. Trash had no rename/delete menu, and reordering it through the interface saved the new position while preserving all synthetic items. There was no horizontal overflow or browser error. The README screenshot comes from this fictional fixture. Earlier browser checks also verified a fresh empty catalog, category moves with database readback, and the portable update request.
 
 The illustrated guide was checked separately at 1470 and 390 pixel widths. All eight author-supplied screenshots loaded, the section links and full-size image viewer worked, and the document had no horizontal overflow, browser errors, or network requests. Its single-file HTML copy embeds the screenshots; its Markdown copy uses the same images as repository assets.
+
+The Empty trash interface was checked separately in both the personal and public builds at desktop and mobile widths using synthetic data. The preview, project results, and Stop after current chat flows passed, including stopping before work starts and during an in-flight archive request. The two controls share an outlined group, and the inactive stop button remains visible in gray. No browser errors were observed.
 
 `pnpm test` exercises synthetic export and source data, catalog mutations, identity reconciliation, archive and missing-item handling, revision checks, maintenance leases, activity refresh, and MCP protocol behavior. Tests create temporary or in-memory catalogs.
 
