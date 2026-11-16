@@ -40,7 +40,7 @@ const importer = await build({
   outfile: join(marketplace, 'tools', 'import-export.mjs'),
 });
 
-for (const name of ['plugin.json', 'mcp.json', 'maintenance-workflow.js', 'LICENSE']) {
+for (const name of ['plugin.json', 'mcp.json', 'maintenance-workflow.js', 'trash-archive-workflow.js', 'LICENSE']) {
   await copyFile(join(root, name), join(plugin, name));
 }
 await copyFile(join(root, 'public', 'organizer.html'), join(plugin, 'public', 'organizer.html'));
