@@ -35,7 +35,7 @@ test('installed workflow can be retrieved and initialize an empty catalog throug
     assert.equal(definition.annotations.readOnlyHint, true);
     const workflow = await client.callTool({ name: 'get_maintenance_workflow', arguments: {} });
     assert.equal(workflow.isError, undefined);
-    assert.equal(workflow.structuredContent.version, '0.2.2');
+    assert.equal(workflow.structuredContent.version, '0.2.4');
     assert.equal(workflow.structuredContent.source, await readFile(new URL('../maintenance-workflow.js', import.meta.url), 'utf8'));
     assert.deepEqual(store.snapshot(), before);
     const response = value => ({ structuredContent: value, content: [] });
