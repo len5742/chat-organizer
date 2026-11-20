@@ -10,7 +10,7 @@ async function execute({projectAliases=[alias],currentProjects=projects,omitAlia
  const operations=[],observations=[];let revision=4;
  const tools={
   exec_command:async()=>{throw Error('Caller shell not allowed');},
-  mcp__chat_organizer__get_connection_status:async()=>response({serverVersion:'0.2.2'}),
+  mcp__chat_organizer__get_connection_status:async()=>response({serverVersion:'0.2.5'}),
   mcp__chat_organizer__maintain_catalog:async({request})=>{const{op,args}=request;operations.push(request);let value;
    if(op==='acquire')value={acquired:true,token:'fixture-lease'};
    else if(op==='renew')value={renewed:true};
@@ -36,7 +36,7 @@ test('service gateway collector metadata attaches only to the native backing pro
 test('older collector shape and absent aliases never emit an unlink or inferred mapping',async()=>{for(const config of [{omitAliases:true},{projectAliases:[]}]){const{observations}=await execute(config);assert.ok(observations.every(o=>!Object.hasOwn(o,'chatgptProjectId')));}});
 test('workflow rejects ambiguous, wrong-host, wrong-source and inaccessible target alias payloads',async()=>{for(const config of [{projectAliases:[alias,alias]}, {projectAliases:[{...alias,hostId:'durable'}]}, {projectAliases:[{...alias,sourceId:'unrelated'}]}, {projectAliases:[{...alias,chatgptProjectId:'not-a-project'}]}, {currentProjects:projects.slice(0,1)}, {currentProjects:projects.map(p=>p.projectKind==='local'?{...p,hostId:'durable'}:p)}, {currentProjects:projects.map(p=>p.projectKind==='local'?{...p,projectKind:'remote'}:p)}]){const{observations}=await execute(config);assert.ok(observations.every(o=>!Object.hasOwn(o,'chatgptProjectId')));}});
 
-test('project alias workflow requires service 0.2.2 before lease or source collection',async()=>{
+test('project alias workflow requires service 0.2.5 before lease or source collection',async()=>{
   let calls=0;
   const unavailable=async()=>{calls++;throw Error('Must not read source metadata');};
   const tools={
@@ -46,6 +46,6 @@ test('project alias workflow requires service 0.2.2 before lease or source colle
     mcp__codex_app__list_threads:unavailable,
     mcp__codex_app__list_archived_threads:unavailable,
   };
-  await assert.rejects(run(tools,{mode:'recent',recentOnly:true}),/Fully quit and reopen Codex.*0\.2\.2/);
+  await assert.rejects(run(tools,{mode:'recent',recentOnly:true}),/Fully quit and reopen Codex.*0\.2\.5/);
   assert.equal(calls,0);
 });

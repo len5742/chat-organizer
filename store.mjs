@@ -616,7 +616,7 @@ export class CatalogStore {
       items: withRecentActivity(visible), categories: this.categories(), revision: Number(this.meta('revision')),
       savedAt: this.meta('savedAt'), lastImport: lastImport ? JSON.parse(lastImport) : null,
       undoDelete: undoDelete ? { token: undoDelete.token, label: undoDelete.label } : null,
-      connection: { serverVersion: '0.2.4', transport },
+      connection: { serverVersion: '0.2.5', transport },
     };
   }
 
@@ -1057,7 +1057,10 @@ export class CatalogStore {
         if(!item||typeof item!=='object'||Array.isArray(item)||!reasons.has(item.reason)||Object.keys(item).some(key=>!['id','title','reason','detail'].includes(key)))throw new CatalogError('INVALID_INPUT','Invalid named exception.');
         const id=requiredText(item.id,'Exception ID',350);
         if(!/^(chatgpt|codex):(chat|project):.+$/.test(id))throw new CatalogError('INVALID_INPUT','Invalid exception identity.');
-        return {id,title:optionalText(item.title,'Exception title',1000)??savedTitle.get(id)?.title??null,reason:item.reason,detail:requiredText(item.detail,'Exception detail',500)};
+        const suppliedTitle = optionalText(item.title,'Exception title',1000);
+        const placeholder = suppliedTitle === id.split(':').slice(2).join(':');
+        const title = !suppliedTitle || placeholder ? savedTitle.get(id)?.title ?? suppliedTitle ?? null : suppliedTitle;
+        return {id,title,reason:item.reason,detail:requiredText(item.detail,'Exception detail',500)};
       });
     }
     if(Object.hasOwn(report,'audit')) {

@@ -8,7 +8,9 @@ Chat Organizer saves a local catalog of chat and project titles, links, categori
 
 ![Chat Organizer showing synthetic example chats and categories](docs/images/organizer-demo.png)
 
-The preview uses fictional example data. This public package is version **0.2.4**.
+The preview uses fictional example data. This public package is version **0.2.5**.
+
+This release supports the updated desktop metadata cache and prevents unnamed cloud records or message previews from becoming misleading chat entries. See the [0.2.5 release notes](docs/releases/0.2.5.md).
 
 **Experimental Windows desktop integration.** The organizer requires a compatible Codex desktop host with local plugins, MCP Apps, and native chat/project tools. Automatic discovery depends on host capabilities and local metadata schemas. Fresh-account access and other operating systems require additional integration testing.
 
@@ -79,7 +81,7 @@ Codex supports local marketplace directories and the `plugin@marketplace` instal
 
 ### Install a built marketplace archive
 
-If you received `chat-organizer-0.2.4-plugin.zip`, extract it and open PowerShell in the directory that contains its `.agents` and `plugins` folders. Install from that directory:
+If you received `chat-organizer-0.2.5-plugin.zip`, extract it and open PowerShell in the directory that contains its `.agents` and `plugins` folders. Install from that directory:
 
 ```powershell
 codex plugin marketplace add "."

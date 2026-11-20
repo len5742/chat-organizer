@@ -177,8 +177,20 @@ test('manual workflow refuses an older public service before acquiring a mainten
     mcp__codex_app__list_projects:async()=>{throw new Error('Must not read projects');},
     mcp__codex_app__list_threads:async()=>{throw new Error('Must not read chats');},
     mcp__codex_app__list_archived_threads:async()=>{throw new Error('Must not read archives');},
-    mcp__chat_organizer__get_connection_status:async()=>response({serverVersion:'0.2.0'}),
+    mcp__chat_organizer__get_connection_status:async()=>response({serverVersion:'0.2.4'}),
     mcp__chat_organizer__maintain_catalog:async()=>{acquired=true;throw new Error('Should not acquire');},
-  },{mode:'recent',recentOnly:true}),/0\.2\.2/);
+  },{mode:'recent',recentOnly:true}),/0\.2\.5/);
   assert.equal(acquired,false);
+});
+
+test('an exception captured with an opaque ID uses the saved source title', async t => {
+  const id = '00000000-0000-4000-8000-000000000007';
+  const saved = { id: 'codex:chat:' + id, source: 'codex', sourceId: id, kind: 'chat',
+    hostId: 'durable', title: 'Saved source title', updatedAt: new Date().toISOString() };
+  const f = await fixture(t, { items: [saved], exceptions: [
+    collectorException(saved.id, 'project_membership_unverified', id),
+  ], sidebar: [{ id, kind: 'codex', hostId: 'durable', title: saved.title, projectId: 'known-project' }] });
+  const result = await f.run();
+  assert.equal(result.exceptions[0].title, saved.title);
+  assert.equal(f.store.maintenanceState().lastRecentRun.exceptions[0].title, saved.title);
 });

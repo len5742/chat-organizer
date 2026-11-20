@@ -38,7 +38,7 @@ Local source discovery reads these files below `CODEX_HOME`, or the current user
 
 - `state_5.sqlite` for interactive local chat metadata.
 - `.codex-global-state.json` for explicit local project assignments and aliases.
-- `sqlite/codex-dev.db` for recent cached ChatGPT metadata.
+- `sqlite/codex.db` for recent cached ChatGPT metadata, with `sqlite/codex-dev.db` used only when the current cache file is absent. A current-cache read or schema failure is reported instead of falling back to stale data.
 
 These are app-managed implementation details that can change between host releases. Unknown schemas, ambiguous membership, multiple cache account partitions, and unreadable sources are reported as coverage exceptions. The source readers open SQLite metadata with read-only connections. Organizer updates write to the private organizer catalog through its service.
 
