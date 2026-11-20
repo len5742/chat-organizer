@@ -34,7 +34,18 @@
   const unresolvedLookup = message =>
     !/rate.?limit|too many requests|\b429\b|permission|access denied|do not have access|don.t have access|unauthori[sz]ed|forbidden|authenticat|network|timed? ?out|ECONN|ENOTFOUND|fetch failed/i.test(message)
     && /could not determine|unavailable or failed hosts|no matching conversation|no rollout/i.test(message);
-  const identifierTitle = item => item.title===item.sourceId && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(item.title);
+  const sourceTitle = thread => {
+    const name = typeof thread.name === 'string' ? thread.name.trim() : '';
+    if (name && name !== thread.id && name.length <= 1000) return name;
+    const title = typeof thread.title === 'string' ? thread.title.trim() : '';
+    if (!title || title === thread.id || title.length > 1000) return;
+    if (/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(title)) return;
+    // The host may use the first message when its display name is absent.
+    // Such previews cannot establish a source title.
+    if (title === thread.preview?.trim() || /(?:…|\.\.\.)$/.test(title)) return;
+    if (/^(?:<|\{|#|\[@[^\]]+\]\(plugin:\/\/|An MCP app initiated)/i.test(title)) return;
+    return title;
+  };
   const activityDate = value => {
     if(!Number.isFinite(value))return;
     // Native app metadata can mix Unix seconds and milliseconds in one list.
@@ -44,21 +55,10 @@
     if(!Number.isFinite(date.getTime())||date.getUTCFullYear()<0||date.getUTCFullYear()>9999)return;
     return date.toISOString();
   };
-  const inferredDescription = result => {
-    for (const turn of [...(result.turns??[])].reverse()) for (const item of turn.items??[]) {
-      if(item.type!=='userMessage') continue;
-      for(const part of item.content??[]) {
-        if(part.type!=='text'||typeof part.text!=='string') continue;
-        const text=part.text.trim().replace(/\s+/g,' ');
-        if(text.length<24||/^(?:<|\{|#|An MCP app initiated|Chat Organizer:|yes[.,! ]*$|no[.,! ]*$|test(?: again)?[.,! ]*$)/i.test(text)) continue;
-        return text.length<=80?text:text.slice(0,79).trimEnd()+'…';
-      }
-    }
-  };
   if(options.recentOnly===true && typeof tools.mcp__chat_organizer__get_connection_status==='function') {
     const status=unpack(await tools.mcp__chat_organizer__get_connection_status({}));
     const version=String(status.serverVersion??'').split('.').map(Number);
-    if(!(version[0]>0||version[0]===0&&(version[1]>2||version[1]===2&&version[2]>=1))) throw new Error('Fully quit and reopen Codex to load Chat Organizer 0.2.2 before updating.');
+    if(!(version[0]>0||version[0]===0&&(version[1]>2||version[1]===2&&version[2]>=5))) throw new Error('Fully quit and reopen Codex to load Chat Organizer 0.2.5 before updating.');
   }
   const local = async (op,args={}) => {
     const serviceArgs=op==='collect'?{projects:args.projects.map(project=>{
@@ -151,6 +151,7 @@
     && obs.hostId==='local' && ['found','archived'].includes(obs.outcome)
     && typeof obs.projectId==='string' && obs.projectId.trim()).map(obs=>obs.id));
   let unverifiedSidebarMemberships=0;
+  let unnamedRemoteSkipped=0;
   for(const p of projects) {
     const source=p.projectKind==='chatgpt'?'chatgpt':'codex';
     const observation={id:source+':project:'+p.projectId,source,kind:'project',sourceId:p.projectId,title:p.label,hostId:p.hostId??null,observedAt:now,evidence:'project_list',outcome:'found'};
@@ -164,7 +165,13 @@
   }
   for(const t of [...(sidebar.pinnedThreads??[]),...sidebar.threads]) {
     if(!['chatgpt','codex'].includes(t.kind)||typeof t.title!=='string'||!t.title.trim())continue;
-    const observation={id:t.kind+':chat:'+t.id,source:t.kind,sourceId:t.id,kind:'chat',title:t.title,hostId:t.hostId??null,observedAt:now,evidence:'sidebar',outcome:'found',url:t.kind==='chatgpt'?'https://chatgpt.com/c/'+t.id:'codex://threads/'+t.id};
+    const title = sourceTitle(t);
+    if (!title && t.kind === 'codex' && t.hostId && t.hostId !== 'local') {
+      unnamedRemoteSkipped++;
+      continue;
+    }
+    const observation={id:t.kind+':chat:'+t.id,source:t.kind,sourceId:t.id,kind:'chat',...(title?{title}:{}),hostId:t.hostId??null,observedAt:now,evidence:'sidebar',outcome:'found',url:t.kind==='chatgpt'?'https://chatgpt.com/c/'+t.id:'codex://threads/'+t.id};
+    if (!title && !collected.observations.some(row => row.id === observation.id)) continue;
     if(typeof t.projectId==='string' && t.projectId.trim()) {
       if(t.kind!=='codex' || !explicitlyProjectless.has(observation.id))observation.projectId=t.projectId;
     }else if(t.projectId===null) {
@@ -185,7 +192,7 @@
   // Source order is intentional: old cache observations, then fresh sidebar,
   // then explicit archive state. Field-level timestamps prevent regressions.
   for(let i=0;i<observations.length;i+=25)await apply(observations.slice(i,i+25));
-  stats.sources={...collected.counts,sidebarMembershipUnverified:unverifiedSidebarMemberships};stats.projectCount=projects.length;stats.observations=observations.length;
+  stats.sources={...collected.counts,sidebarMembershipUnverified:unverifiedSidebarMemberships,unnamedRemoteSkipped};stats.projectCount=projects.length;stats.observations=observations.length;
   if(options.recentOnly===true && mode==='recent' && (options.verifyRecent??true) && !dryRun) {
     const batch=await local('verificationBatch',{observedIds:observations.filter(x=>x.outcome==='found'||x.outcome==='archived').map(x=>x.id),limit:8});
     stats.sources.recentVerificationCandidates=batch.pending;
@@ -199,14 +206,11 @@
       let observation;
       try {
         stats.probeCalls++;
-        const result=unpack(await tools.mcp__codex_app__read_thread({threadId:item.sourceId,...(item.source==='codex'&&item.hostId?{hostId:item.hostId}:{}),turnLimit:identifierTitle(item)?10:1,includeOutputs:false,maxOutputCharsPerItem:600}));
+        const result=unpack(await tools.mcp__codex_app__read_thread({threadId:item.sourceId,...(item.source==='codex'&&item.hostId?{hostId:item.hostId}:{}),turnLimit:1,includeOutputs:false,maxOutputCharsPerItem:600}));
         if(result.thread?.id!==item.sourceId) throw new Error('Lookup returned no matching conversation');
         observation={...base,outcome:'found'};
-        if(typeof result.thread.title==='string'&&result.thread.title.trim()&&result.thread.title!==item.sourceId) observation.title=result.thread.title.trim();
-        else if(identifierTitle(item)) {
-          const description=inferredDescription(result);
-          if(description){observation.title=description;stats.sources.inferredDescriptions=(stats.sources.inferredDescriptions??0)+1;}
-        }
+        const title = sourceTitle(result.thread);
+        if (title) observation.title = title;
         const updatedAt=activityDate(result.thread.updatedAt);if(updatedAt!==undefined)observation.updatedAt=updatedAt;
       } catch(error) {
         const message=String(error.message??error).slice(0,500);
@@ -277,11 +281,11 @@
           await local('renew',{token:leaseToken});
           try {
             stats.probeCalls++;
-            const result=unpack(await tools.mcp__codex_app__read_thread({threadId:item.sourceId,...(item.source==='codex'&&item.hostId?{hostId:item.hostId}:{}),turnLimit:identifierTitle(item)?10:1,includeOutputs:false,maxOutputCharsPerItem:identifierTitle(item)?600:1}));
+            const result=unpack(await tools.mcp__codex_app__read_thread({threadId:item.sourceId,...(item.source==='codex'&&item.hostId?{hostId:item.hostId}:{}),turnLimit:1,includeOutputs:false,maxOutputCharsPerItem:1}));
             if(result.thread?.id!==item.sourceId)throw new Error('Lookup returned no matching conversation');
             const found={...base,outcome:'found'};
-            if(typeof result.thread.title==='string'&&result.thread.title.trim()&&result.thread.title!==item.sourceId)found.title=result.thread.title;
-            else if(identifierTitle(item)) {const description=inferredDescription(result);if(description)found.title=description;}
+            const title = sourceTitle(result.thread);
+            if (title) found.title = title;
             const updatedAt=activityDate(result.thread.updatedAt);if(updatedAt!==undefined)found.updatedAt=updatedAt;
             return found;
           }catch(error){

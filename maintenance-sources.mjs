@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -114,6 +114,17 @@ function cachedRows(path) {
   });
 }
 
+async function chatgptCachePath(codexHome) {
+  const current = join(codexHome, 'sqlite', 'codex.db');
+  try {
+    await stat(current);
+    return current;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    return join(codexHome, 'sqlite', 'codex-dev.db');
+  }
+}
+
 function errorFor(source, error) {
   const known = new Set(['unsupported_schema', 'row_limit', 'multiple_accounts']);
   return { source, code: known.has(error?.message) ? error.message : error?.code === 'ENOENT' ? 'unavailable' : 'read_failed' };
@@ -188,7 +199,9 @@ export async function collectRecentSources({ projects = [], now = new Date(), co
     coverage.localIndex = 'all indexed interactive top-level local chats, including explicit archived flags';
   } catch (error) { errors.push(errorFor('local_index', error)); }
   try {
-    const rows = cachedRows(join(codexHome, 'sqlite', 'codex-dev.db'));
+    const cachePath = await chatgptCachePath(codexHome);
+    const rows = cachedRows(cachePath);
+    coverage.chatgptCacheFile = cachePath.endsWith('codex-dev.db') ? 'codex-dev.db' : 'codex.db';
     for (const row of rows) {
       if (row.missing_candidate !== 0) {
         counts.chatgptMissingCandidatesSkipped++;

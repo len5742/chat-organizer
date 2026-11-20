@@ -13,7 +13,8 @@ import { readLocalActivity } from './activity-refresh.mjs';
 import { collectRecentSources } from './maintenance-sources.mjs';
 
 // A new UI release needs a new URI so hosts do not reuse a cached layout.
-const UI_URI = 'ui://chat-organizer/v0.2.4/index.html';
+const UI_URI = 'ui://chat-organizer/v0.2.5/index.html';
+const PREVIOUS_UI_URI = 'ui://chat-organizer/v0.2.4/index.html';
 const SERVER_ICONS = [{ src: 'data:image/png;base64,' + readFileSync(new URL('./assets/icon.png', import.meta.url)).toString('base64'), mimeType: 'image/png', sizes: ['256x256'] }];
 const STABLE_UI_URI = 'ui://chat-organizer/index.html';
 const instanceId = randomUUID();
@@ -44,10 +45,10 @@ const snapshotOutputSchema = z.object({
   revision: z.number().int().nonnegative(), savedAt: z.string().nullable(),
   lastImport: z.object({ at: z.string(), coverage: z.string(), count: z.number().int().nonnegative() }).strict().nullable(),
   undoDelete: z.object({ token: z.string(), label: z.string() }).strict().nullable(),
-  connection: z.object({ serverVersion: z.literal('0.2.4'), transport: z.enum(['stdio', 'http']) }).strict(),
+  connection: z.object({ serverVersion: z.literal('0.2.5'), transport: z.enum(['stdio', 'http']) }).strict(),
 }).strict();
 const connectionOutputSchema = z.object({
-  ok: z.literal(true), serverName: z.literal('chat-organizer'), serverVersion: z.literal('0.2.4'),
+  ok: z.literal(true), serverName: z.literal('chat-organizer'), serverVersion: z.literal('0.2.5'),
   instanceId: z.string(), startedAt: z.string(), transport: z.enum(['stdio', 'http']),
   catalogRevision: z.number().int().nonnegative(),
 }).strict();
@@ -175,8 +176,8 @@ async function guarded(action, summarize) {
 }
 
 export function createOrganizerServer(store, transport = 'stdio', { activityReader = readLocalActivity, recentCollector = collectRecentSources } = {}) {
-  const server = new McpServer({ name: 'chat-organizer', version: '0.2.4', icons: SERVER_ICONS }, { capabilities: { logging: {} } });
-  for (const [name, uri] of [['organizer', UI_URI], ['organizer-stable', STABLE_UI_URI]]) {
+  const server = new McpServer({ name: 'chat-organizer', version: '0.2.5', icons: SERVER_ICONS }, { capabilities: { logging: {} } });
+  for (const [name, uri] of [['organizer', UI_URI], ['organizer-v024', PREVIOUS_UI_URI], ['organizer-stable', STABLE_UI_URI]]) {
   server.registerResource(name, uri, {
     title: 'Chat Organizer', description: 'A private local catalog for organizing ChatGPT and Codex chats.',
     mimeType: 'text/html;profile=mcp-app',
@@ -223,7 +224,7 @@ export function createOrganizerServer(store, transport = 'stdio', { activityRead
     inputSchema: {}, outputSchema: connectionOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     _meta: { ui: { visibility: ['model', 'app'] } },
-  }, async () => result({ ok: true, serverName: 'chat-organizer', serverVersion: '0.2.4', instanceId, startedAt, transport, catalogRevision: store.snapshot(transport).revision }));
+  }, async () => result({ ok: true, serverName: 'chat-organizer', serverVersion: '0.2.5', instanceId, startedAt, transport, catalogRevision: store.snapshot(transport).revision }));
 
   server.registerTool('get_maintenance_state', {
     title: 'Read organizer maintenance state', description: 'Read compact catalog counts, synchronization coverage, and the current daily audit progress. Use this before an incremental update instead of printing the full catalog.',
@@ -236,11 +237,11 @@ export function createOrganizerServer(store, transport = 'stdio', { activityRead
     title: 'Read the organizer update workflow',
     description: 'Return the complete installed maintenance function. When the user requests an update, evaluate this source in the assistant tool runner and await the function with the supported tools object and {mode:"recent",recentOnly:true}. It uses the organizer service and native app tools. Reading this source does not run it or change the catalog.',
     inputSchema: {},
-    outputSchema: z.object({ version: z.literal('0.2.4'), source: z.string().min(1) }).strict(),
+    outputSchema: z.object({ version: z.literal('0.2.5'), source: z.string().min(1) }).strict(),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     _meta: { ui: { visibility: ['model'] } },
   }, async () => guarded(async () => ({
-    version: '0.2.4',
+    version: '0.2.5',
     source: await readFile(new URL('./maintenance-workflow.js', import.meta.url), 'utf8'),
   }), value => ({ version: value.version, message: 'The complete workflow source is in structuredContent.source.' })));
 
@@ -402,7 +403,7 @@ export async function startHttpServer(store, port = 43187) {
       if (!['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname) || parsed.port !== String(listener.address().port) || parsed.protocol !== 'http:') { res.writeHead(403).end('Forbidden'); return; }
     }
     if (req.url === '/health' && req.method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ ok: true, server: 'chat-organizer', version: '0.2.4' })); return;
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ ok: true, server: 'chat-organizer', version: '0.2.5' })); return;
     }
     if (req.url !== '/mcp') { res.writeHead(404).end('Not found'); return; }
     if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }).end('Method not allowed'); return; }
