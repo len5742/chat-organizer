@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, copyFile, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -132,6 +132,26 @@ test('multiple cached account partitions are reported as a source error', async 
   const result = await collectRecentSources({ projects, now, codexHome: home });
   assert.equal(result.observations.length, 0);
   assert.deepEqual(result.errors, [{ source: 'chatgpt_cache', code: 'multiple_accounts' }]);
+});
+
+test('the current app cache takes precedence over the older development cache', async t => {
+  const home = await fixture(t, { cache: [{ id: 'current', title: 'Current app title' }] });
+  await copyFile(join(home, 'sqlite', 'codex-dev.db'), join(home, 'sqlite', 'codex.db'));
+  const old = new DatabaseSync(join(home, 'sqlite', 'codex-dev.db'));
+  old.prepare('UPDATE local_thread_catalog SET display_title=?').run('Stale development title');
+  old.close();
+  const result = await collectRecentSources({ projects, now, codexHome: home });
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.coverage.chatgptCacheFile, 'codex.db');
+  assert.equal(result.observations[0].title, 'Current app title');
+});
+
+test('an unreadable current cache is reported instead of silently using stale development data', async t => {
+  const home = await fixture(t, { cache: [{ id: 'stale' }] });
+  await writeFile(join(home, 'sqlite', 'codex.db'), 'invalid current database');
+  const result = await collectRecentSources({ projects, now, codexHome: home });
+  assert.equal(result.observations.length, 0);
+  assert.deepEqual(result.errors.map(error => error.source), ['chatgpt_cache']);
 });
 
 test('collector names skipped cache exceptions without changing accepted observations or scope', async t => {

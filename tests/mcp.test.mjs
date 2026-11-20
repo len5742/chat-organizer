@@ -29,14 +29,14 @@ test('manual updater exposes read-only status to the app and serves the current 
     assert.deepEqual(first.structuredContent, second.structuredContent);
     assert.deepEqual(store.snapshot(), before, 'Status polling preserves organization, revision, and Undo');
     const openTool = tools.find(tool => tool.name === 'open_organizer');
-    assert.equal(openTool._meta.ui.resourceUri, 'ui://chat-organizer/v0.2.4/index.html');
+    assert.equal(openTool._meta.ui.resourceUri, 'ui://chat-organizer/v0.2.5/index.html');
     const current = await client.readResource({ uri: openTool._meta.ui.resourceUri });
     const previous = await client.readResource({ uri: 'ui://chat-organizer/index.html' });
     assert.equal(previous.contents[0].text, current.contents[0].text);
     assert.match(current.contents[0].text, /id="update-now"/);
     assert.match(current.contents[0].text, /id="update-status"/);
     const status = await client.callTool({ name: 'get_connection_status', arguments: {} });
-    assert.equal(status.structuredContent.serverVersion, '0.2.4');
+    assert.equal(status.structuredContent.serverVersion, '0.2.5');
     assert.equal(status.structuredContent.serverName, 'chat-organizer');
   } finally { await client.close(); await server.close(); store.close(); }
 });
@@ -143,12 +143,12 @@ test('official MCP client connects over stdio, discovers tools, saves, and reads
     const maintenanceBefore = await client.callTool({ name: 'get_maintenance_state', arguments: {} });
     const maintenanceAgain = await client.callTool({ name: 'get_maintenance_state', arguments: {} });
     assert.deepEqual(maintenanceAgain.structuredContent, maintenanceBefore.structuredContent, 'Polling update status does not change saved catalog state');
-    assert.equal(openTool._meta.ui.resourceUri, 'ui://chat-organizer/v0.2.4/index.html');
+    assert.equal(openTool._meta.ui.resourceUri, 'ui://chat-organizer/v0.2.5/index.html');
     assert.equal(openTool._meta['openai/outputTemplate'], openTool._meta.ui.resourceUri);
     assert.equal(openTool.annotations.readOnlyHint, true);
     const status = await client.callTool({ name: 'get_connection_status', arguments: {} });
     assert.equal(status.structuredContent.ok, true);
-    assert.equal(status.structuredContent.serverVersion, '0.2.4');
+    assert.equal(status.structuredContent.serverVersion, '0.2.5');
     assert.equal(status.structuredContent.serverName, 'chat-organizer');
     assert.equal(status.structuredContent.transport, 'stdio');
     const imported = await client.callTool({ name: 'import_inventory', arguments: { items: [{ id: 'chatgpt:chat:test', source: 'chatgpt', sourceId: 'test', title: 'Connection test', kind: 'chat', url: 'https://chatgpt.com/c/test' }], coverage: 'synthetic test item' } });
@@ -169,7 +169,7 @@ test('official MCP client connects over stdio, discovers tools, saves, and reads
     assert.equal(duplicateImport._meta.error.code, 'DUPLICATE_ID');
     const opened = await client.callTool({ name: 'open_organizer', arguments: {} });
     assert.deepEqual(opened.structuredContent, saved.structuredContent);
-    const resource = await client.readResource({ uri: 'ui://chat-organizer/v0.2.4/index.html' });
+    const resource = await client.readResource({ uri: 'ui://chat-organizer/v0.2.5/index.html' });
     assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
     assert.match(resource.contents[0].text, /<html[\s>]/i);
     assert.match(resource.contents[0].text, /category-popover/);

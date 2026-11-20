@@ -74,25 +74,48 @@ test('recent verification bounds each run to eight probes, rotates candidates, a
   });
 });
 
-test('recent verification probes observed UUID titles with the saved host and infers the earliest meaningful returned user message', async () => {
+test('recent verification uses an explicit native name instead of a returned message preview', async () => {
   const item = uuidChat();
   const description = 'Compare the sample notebook layouts for a planning session.';
   await fixture([item], async ({store,run,reads,waits}) => {
     const result=await run();
-    assert.equal(result.probeCalls,1);assert.equal(result.sources.inferredDescriptions,1);
-    assert.deepEqual(reads[0],{threadId:item.sourceId,hostId:'durable',turnLimit:10,includeOutputs:false,maxOutputCharsPerItem:600});
+    assert.equal(result.probeCalls,1);
+    assert.deepEqual(reads[0],{threadId:item.sourceId,hostId:'durable',turnLimit:1,includeOutputs:false,maxOutputCharsPerItem:600});
     assert.equal(store.snapshot().items[0].title,description);assert.equal(store.snapshot().items[0].hostId,'durable');
     assert.deepEqual(waits,[2000]);
-  },{sidebar:[{id:item.sourceId,kind:'codex',hostId:'durable',title:item.sourceId,updatedAt:Date.now()/1000}],read:async args=>response({thread:{id:args.threadId,title:null},turns:[userTurn('Please continue checking the latest update to this issue.'),userTurn(description),userTurn('yes'),userTurn('<environment_context>Example setup details that are not a title</environment_context>')]})});
+  },{sidebar:[{id:item.sourceId,kind:'codex',hostId:'durable',title:item.sourceId,updatedAt:Date.now()/1000}],read:async args=>response({thread:{id:args.threadId,name:description,title:'An unrelated message preview…'},turns:[userTurn('Please continue checking the latest update to this issue.'),userTurn('yes')]})});
 });
 
 test('recent verification does not derive a description from scaffolding or generic short acknowledgments', async () => {
   const item=uuidChat();
   await fixture([item],async ({store,run,reads})=>{
-    const result=await run();assert.equal(result.probeCalls,1);assert.equal(reads[0].turnLimit,10);
+    const result=await run();assert.equal(result.probeCalls,1);assert.equal(reads[0].turnLimit,1);
     assert.equal(store.snapshot().items[0].title,item.sourceId);assert.equal(result.sources.inferredDescriptions??0,0);
   },{read:async args=>response({thread:{id:args.threadId,title:null},turns:[userTurn('test again'),userTurn('yes'),userTurn('# AGENTS.md These are framework instructions and not the real subject'),userTurn('<environment_context>This is execution context for the workspace.</environment_context>'),userTurn('{"cwd":"example execution context"}')]})});
 });
+
+test('unnamed durable discoveries are deferred without adding UUID rows or membership warnings', async () => {
+  const candidate = uuidChat();
+  await fixture([], async ({ store, run, reads }) => {
+    const result = await run();
+    assert.equal(result.complete, true);
+    assert.equal(result.sources.unnamedRemoteSkipped, 1);
+    assert.equal(result.sources.sidebarMembershipUnverified, 0);
+    assert.equal(store.snapshot().items.length, 0);
+    assert.deepEqual(result.exceptions, []);
+    assert.deepEqual(reads, []);
+  }, { sidebar: [{ id: candidate.sourceId, kind: 'codex', hostId: 'durable', title: candidate.sourceId, projectId: null }] });
+});
+
+for (const title of ['A message preview that was truncated…', '[@Example](plugin://example)', 'A complete first user message']) {
+  test('a message preview cannot overwrite a saved name: ' + title, async () => {
+    const item = uuidChat({ title: 'Saved source name' });
+    await fixture([item], async ({ store, run }) => {
+      await run();
+      assert.equal(store.snapshot().items[0].title, item.title);
+    }, { read: async args => response({ thread: { id: args.threadId, title, preview: title }, turns: [userTurn(title)] }) });
+  });
+}
 
 test('recent verification never replaces an existing useful title with a newly inferred description',async()=>{
   const item=uuidChat({title:'Existing recovered notification description'});
@@ -149,9 +172,9 @@ test('recent verification excludes old, observed well-named, and mapped cloud al
   },{sidebar:[{id:known.sourceId,kind:'chatgpt',title:known.title,updatedAt:Date.now()/1000}]});
 });
 
-for (const version of ['0.1.17','0.1.18','0.1.22','0.1.25']) test('recent verification preflight rejects service version '+version+' before a lease or any source reads',async()=>{
+for (const version of ['0.1.17','0.1.18','0.1.22','0.1.25','0.2.4']) test('recent verification preflight rejects service version '+version+' before a lease or any source reads',async()=>{
   await fixture([chat(1)],async({run,operations,reads,calls,store})=>{
-    await assert.rejects(run(),/Fully quit and reopen Codex.*0\.2\.2/);
+    await assert.rejects(run(),/Fully quit and reopen Codex.*0\.2\.5/);
     assert.deepEqual(operations,[]);assert.equal(reads.length,0);assert.equal(calls.lists,0);assert.equal(calls.collector,0);assert.equal(calls.status,1);
     assert.equal(store.maintenanceState().lastRecentRun,null);
   },{version});
