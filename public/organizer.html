@@ -223,7 +223,7 @@
   <main id="organizer-scroll" aria-label="Chat Organizer">
     <header class="title-line">
       <button id="controls-toggle" class="controls-toggle" type="button" aria-expanded="true" aria-controls="organizer-controls header-meta" aria-label="Hide organizer controls" title="Hide organizer controls">▾</button>
-      <h1>Chat Organizer</h1><span class="badge" title="Software version 0.2.4" aria-label="Software version 0.2.4">0.2.4</span>
+      <h1>Chat Organizer</h1><span class="badge" title="Software version 0.2.5" aria-label="Software version 0.2.5">0.2.5</span>
       <div id="header-meta" class="header-meta">
         <span id="inventory-summary">Waiting for inventory</span>
         <span id="connection-state" class="combined-status state" data-state="connecting" role="status">Connecting</span>
@@ -302,7 +302,7 @@
         <dt>Saved catalog</dt><dd id="server-state" class="state">Waiting</dd>
         <dt>Host</dt><dd id="detail-host">Waiting</dd>
         <dt>Protocol</dt><dd id="detail-protocol">Waiting</dd>
-        <dt>Interface</dt><dd>0.2.4</dd>
+        <dt>Interface</dt><dd>0.2.5</dd>
         <dt>Server</dt><dd id="detail-server">Waiting</dd>
         <dt>Saved at</dt><dd id="detail-saved">Waiting</dd>
         <dt>Inventory imported</dt><dd id="detail-import">Waiting</dd>
@@ -1556,6 +1556,7 @@
       const run=value?.lastRecentRun;
       if(Number.isSafeInteger(run?.checked))parts.push(run.checked+' source check'+(run.checked===1?'':'s')+(Number.isSafeInteger(run.visibleItems)?'; '+run.visibleItems+' visible saved item'+(run.visibleItems===1?'':'s'):'')+'.');
       const recent=value?.lastRecentRun?.sources;
+      if (recent?.unnamedRemoteSkipped) parts.push(recent.unnamedRemoteSkipped + ' unnamed cloud record'+(recent.unnamedRemoteSkipped===1?'':'s')+' deferred until source names are available.');
       if (Number.isSafeInteger(recent?.recentVerificationChecked)) parts.push(recent.recentVerificationChecked + ' recent verification attempt'+(recent.recentVerificationChecked===1?'':'s')+'.' + (recent.recentVerificationPending ? ' ' + recent.recentVerificationPending + ' recent check'+(recent.recentVerificationPending===1?'':'s')+' pending.' : ''));
       if (value?.recentVerificationRetryAfter && Date.parse(value.recentVerificationRetryAfter)>Date.now()) parts.push('Recent checks paused until ' + formatTime(value.recentVerificationRetryAfter) + '.');
       return parts.join(' ');
@@ -1903,7 +1904,7 @@
         return;
       }
       try {
-        const result = await request('ui/initialize', { appInfo: { name: 'chat-organizer', version: '0.2.4' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: PROTOCOL });
+        const result = await request('ui/initialize', { appInfo: { name: 'chat-organizer', version: '0.2.5' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: PROTOCOL });
         if (!result || result.protocolVersion !== PROTOCOL || typeof result.hostCapabilities !== 'object') throw new Error('The host did not confirm a supported organizer connection.');
         hostCapabilities = result.hostCapabilities;
         if (!hostCapabilities.serverTools) throw new Error('The host has not enabled organizer server tools.');
