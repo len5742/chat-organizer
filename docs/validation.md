@@ -4,6 +4,10 @@ This package is derived from a locally used organizer and is being prepared for 
 
 ## Local verification
 
+Version 0.2.5 passed 314 automated tests on Windows with Node.js 24. New regression checks cover current-cache selection, failure reporting without stale fallback, deferring unnamed cloud records, retaining saved names when sources return previews, and exception naming. The package is rebuilt from the reviewed public source. The interface changes are limited to the version marker and a deferred-record count. The browser checks described below were performed for 0.2.4.
+
+The extracted 0.2.5 archive passed a separate service check from a directory containing spaces. Its bundled importer imported one fictional active chat and skipped one archived chat. The packaged service selected the current cache over a conflicting legacy cache, deferred an unnamed durable record, returned the expected saved catalog, and served all three current, previous, and stable interface resource addresses. An attempted isolated CLI installation could register the marketplace, but cache activation was denied by the execution environment's filesystem permissions. Full CLI installation was not reverified for 0.2.5.
+
 Version 0.2.4 passed 306 automated tests on Windows with Node.js 24. The dependency lockfile is retained from the verified frozen installation. Tests cover the permanent Trash category, protection from renaming and deletion, reordering, preservation of an existing Trash category and its assigned items, and upgrades with a pending category-deletion Undo. Archive-batch tests cover exact approved scope, project members and aliases, new or changed membership, organizer-only project removal, source failures, uncertain results, concurrent requests, interruption recovery, controlled stopping, and preservation of unrelated catalog data.
 
 A temporary Codex profile was used to register and install `chat-organizer@chat-organizer-community` from a directory containing spaces. Its installed service, interface, and complete maintenance workflow were verified against the build. The service and workflow use the `chat_organizer` namespace.
