@@ -1,0 +1,72 @@
+name: Build and publish release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+concurrency:
+  group: chat-organizer-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'len5742/chat-organizer' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check release version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
+          "value=$version" >> $env:GITHUB_OUTPUT
+          gh release view "v$version" --json tagName 2>$null
+          if ($LASTEXITCODE -eq 0) { "publish=false" >> $env:GITHUB_OUTPUT }
+          else { "publish=true" >> $env:GITHUB_OUTPUT }
+          exit 0
+      - name: Install dependencies
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          npm install --global pnpm@11.25.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run regression tests
+        if: steps.version.outputs.publish == 'true'
+        run: pnpm test
+      - name: Build marketplace
+        if: steps.version.outputs.publish == 'true'
+        run: pnpm build
+      - name: Package source, plug-in, guide, and checksums
+        if: steps.version.outputs.publish == 'true'
+        run: python scripts/package-release.py
+      - name: Publish verified release
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          gh release create "v$env:RELEASE_VERSION" `
+            "dist/release/chat-organizer-$env:RELEASE_VERSION-plugin.zip" `
+            "dist/release/chat-organizer-$env:RELEASE_VERSION-source.zip" `
+            dist/release/user-guide.html dist/release/SHA256SUMS.txt `
+            --target $env:RELEASE_COMMIT --title "Chat Organizer $env:RELEASE_VERSION" `
+            --notes-file "docs/releases/$env:RELEASE_VERSION.md" --latest
